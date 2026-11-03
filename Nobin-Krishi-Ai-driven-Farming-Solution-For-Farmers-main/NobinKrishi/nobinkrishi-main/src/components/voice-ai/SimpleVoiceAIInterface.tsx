@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { Send, Mic, MicOff, Loader2, Volume2, VolumeX, RotateCcw, Trash2 } from 'lucide-react';
+import { Send, Mic, MicOff, Loader2, Volume2, VolumeX, Trash2 } from 'lucide-react';
+import { AiServiceError, requestFarmingChat, requestVoiceAssistant } from '@/services/ai/invokeFunction';
 
 // TypeScript declarations for Speech APIs
 declare global {
@@ -43,6 +44,8 @@ const SimpleVoiceAIInterface: React.FC<SimpleVoiceAIInterfaceProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [interimText, setInterimText] = useState('');
+  const inFlightRef = useRef(false);
+  const lastInputWasVoiceRef = useRef(false);
 
   // Check for speech recognition support
   const isSpeechRecognitionSupported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
@@ -73,9 +76,8 @@ const SimpleVoiceAIInterface: React.FC<SimpleVoiceAIInterfaceProps> = ({
     }
   }, [messages, initialQuestion]);
 
-  // Helper function to send message with specific text
-  const sendMessageWithText = async (text: string) => {
-    if (!text.trim()) return;
+  const sendMessageWithText = async (text: string, fromVoice = false) => {
+    if (!text.trim() || inFlightRef.current) return;
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -85,102 +87,24 @@ const SimpleVoiceAIInterface: React.FC<SimpleVoiceAIInterfaceProps> = ({
       language: currentLanguage
     };
 
+    const history = [...messages, userMessage].map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+    }));
+
+    inFlightRef.current = true;
     setMessages(prev => [...prev, userMessage]);
     setInputText('');
     setIsProcessing(true);
     setError(null);
 
     try {
-      // Use actual Dhenu API
-      const apiKey = "dh-6N16jV-_8pQfntwCAmcAGmqmxLpz3vWsplNZwGSB_lU";
-      const baseURL = "https://api.dhenu.ai/v1";
-      
-      // Prepare system message for agricultural context
-      const systemMessage = {
-        role: 'system',
-        content: 'You are a helpful agricultural assistant for farmers in Bangladesh. Provide practical, accurate advice about farming, crops, weather, market prices, and agricultural best practices. Respond in the same language as the user\'s question (Bangla or English). Keep responses concise and actionable.'
-      };
+      const useVoiceEndpoint = fromVoice || lastInputWasVoiceRef.current;
+      lastInputWasVoiceRef.current = false;
 
-      // Prepare conversation context (last 5 messages)
-      const contextMessages = messages.slice(-4).map(msg => ({
-        role: msg.role,
-        content: msg.content
-      }));
-
-      const requestBody = {
-        model: 'dhenu2-in-8b-preview',
-        messages: [
-          systemMessage,
-          ...contextMessages,
-          { role: 'user', content: text }
-        ],
-        temperature: 0.7,
-        max_tokens: 500,
-        stream: false
-      };
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-
-      const response = await fetch(`${baseURL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        let errorMessage = `API request failed: ${response.status} ${response.statusText}`;
-        
-        try {
-          const errorData = await response.json();
-          if (errorData.error && errorData.error.message) {
-            errorMessage = errorData.error.message;
-          }
-        } catch (parseError) {
-          // If we can't parse the error response, use the status text
-        }
-
-        // Handle specific HTTP status codes
-        switch (response.status) {
-          case 400:
-            throw new Error('Invalid request format');
-          case 401:
-            throw new Error('Invalid API key');
-          case 403:
-            throw new Error('API access forbidden');
-          case 404:
-            throw new Error('Dhenu API endpoint not found - API may be temporarily unavailable');
-          case 429:
-            throw new Error('Rate limit exceeded. Please try again later.');
-          case 500:
-            throw new Error('AI service temporarily unavailable');
-          case 502:
-          case 503:
-          case 504:
-            throw new Error('AI service temporarily unavailable');
-          default:
-            throw new Error(errorMessage);
-        }
-      }
-
-      const data = await response.json();
-
-      if (!data.choices || data.choices.length === 0) {
-        throw new Error('No response from AI service');
-      }
-
-      const aiResponseContent = data.choices[0].message.content;
-      
-      if (!aiResponseContent || aiResponseContent.trim() === '') {
-        throw new Error('Empty response from AI service');
-      }
+      const aiResponseContent = useVoiceEndpoint
+        ? await requestVoiceAssistant(history, currentLanguage)
+        : await requestFarmingChat(history, currentLanguage);
 
       const aiResponse: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -191,69 +115,43 @@ const SimpleVoiceAIInterface: React.FC<SimpleVoiceAIInterfaceProps> = ({
       };
 
       setMessages(prev => [...prev, aiResponse]);
-      
-      // Auto-speak the response
       speakText(aiResponse.content);
-      
     } catch (error) {
-      console.error('Dhenu API Error:', error);
-      
-      let userFriendlyError = 'Connection issue, please try again';
-      let fallbackResponse = '';
-      
-      if (error instanceof Error) {
-        if (error.name === 'AbortError') {
-          userFriendlyError = currentLanguage === 'bn' 
-            ? 'অনুরোধ সময়সীমা শেষ। অনুগ্রহ করে আবার চেষ্টা করুন।' 
+      let userFriendlyError = currentLanguage === 'bn'
+        ? 'সংযোগ সমস্যা, অনুগ্রহ করে আবার চেষ্টা করুন'
+        : 'Connection issue, please try again';
+
+      if (error instanceof AiServiceError) {
+        if (error.code === 'RATE_LIMIT') {
+          userFriendlyError = currentLanguage === 'bn'
+            ? 'ফ্রি AI কোটা এখন ব্যস্ত। কিছুক্ষণ পর আবার চেষ্টা করুন।'
+            : 'The free AI quota is currently busy. Please wait a moment and try again.';
+        } else if (error.code === 'NOT_CONFIGURED' || error.code === 'AUTH') {
+          userFriendlyError = currentLanguage === 'bn'
+            ? 'AI সেবা এখনো কনফিগার করা হয়নি। পরে চেষ্টা করুন।'
+            : 'AI service is not configured yet. Please try again later.';
+        } else if (error.code === 'TIMEOUT') {
+          userFriendlyError = currentLanguage === 'bn'
+            ? 'অনুরোধ সময়সীমা শেষ। অনুগ্রহ করে আবার চেষ্টা করুন।'
             : 'Request timeout. Please try again.';
-        } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-          userFriendlyError = currentLanguage === 'bn' 
-            ? 'ইন্টারনেট সংযোগ সমস্যা। অনুগ্রহ করে আপনার ইন্টারনেট চেক করুন।' 
+        } else if (error.code === 'NETWORK') {
+          userFriendlyError = currentLanguage === 'bn'
+            ? 'ইন্টারনেট সংযোগ সমস্যা। অনুগ্রহ করে আপনার ইন্টারনেট চেক করুন।'
             : 'Connection issue, please check internet';
-        } else if (error.message.includes('401') || error.message.includes('Invalid API key')) {
-          userFriendlyError = currentLanguage === 'bn' 
-            ? 'API কী সমস্যা। অনুগ্রহ করে পরে চেষ্টা করুন।' 
-            : 'API authentication issue. Please try again later.';
-        } else if (error.message.includes('429') || error.message.includes('Rate limit')) {
-          userFriendlyError = currentLanguage === 'bn' 
-            ? 'অনেক অনুরোধ। কিছুক্ষণ পর চেষ্টা করুন।' 
-            : 'Too many requests. Please try again in a moment.';
-        } else if (error.message.includes('500') || error.message.includes('502') || error.message.includes('503') || error.message.includes('504') || error.message.includes('temporarily unavailable')) {
-          userFriendlyError = currentLanguage === 'bn' 
-            ? 'AI সেবা সাময়িকভাবে বন্ধ। পরে চেষ্টা করুন।' 
-            : 'AI service temporarily unavailable. Please try again.';
-        } else if (error.message.includes('404') || error.message.includes('endpoint not found')) {
-          userFriendlyError = currentLanguage === 'bn' 
-            ? 'Dhenu AI সেবা সাময়িকভাবে অনুপলব্ধ। আমরা সমস্যা সমাধানের চেষ্টা করছি।' 
-            : 'Dhenu AI service temporarily unavailable. We are working to resolve this issue.';
-          
-          // Provide a helpful fallback response
-          fallbackResponse = currentLanguage === 'bn' 
-            ? `আপনার প্রশ্ন "${text}" এর জন্য ধন্যবাদ। দুঃখিত, AI সেবা এই মুহূর্তে অনুপলব্ধ। অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন। এই সময়ে আপনি আমাদের ওয়েবসাইটের অন্যান্য বৈশিষ্ট্য ব্যবহার করতে পারেন।`
-            : `Thank you for your question "${text}". Sorry, the AI service is currently unavailable. Please try again in a few moments. In the meantime, you can explore other features of our website.`;
-        } else {
-          userFriendlyError = currentLanguage === 'bn' 
-            ? 'সংযোগ সমস্যা, অনুগ্রহ করে আবার চেষ্টা করুন' 
-            : 'Connection issue, please try again';
+        } else if (error.message) {
+          userFriendlyError = error.message;
+        }
+      } else if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          userFriendlyError = currentLanguage === 'bn'
+            ? 'অনুরোধ সময়সীমা শেষ। অনুগ্রহ করে আবার চেষ্টা করুন।'
+            : 'Request timeout. Please try again.';
         }
       }
-      
-      // If we have a fallback response, show it instead of just an error
-      if (fallbackResponse) {
-        const fallbackMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: fallbackResponse,
-          timestamp: new Date(),
-          language: currentLanguage
-        };
 
-        setMessages(prev => [...prev, fallbackMessage]);
-        speakText(fallbackResponse);
-      } else {
-        setError(userFriendlyError);
-      }
+      setError(userFriendlyError);
     } finally {
+      inFlightRef.current = false;
       setIsProcessing(false);
     }
   };
@@ -294,6 +192,7 @@ const SimpleVoiceAIInterface: React.FC<SimpleVoiceAIInterfaceProps> = ({
         }
 
         if (finalTranscript) {
+          lastInputWasVoiceRef.current = true;
           setInputText(finalTranscript);
           setInterimText('');
         } else {
@@ -384,7 +283,7 @@ const SimpleVoiceAIInterface: React.FC<SimpleVoiceAIInterfaceProps> = ({
 
     const currentInput = inputText;
     setInputText('');
-    await sendMessageWithText(currentInput);
+    await sendMessageWithText(currentInput, lastInputWasVoiceRef.current);
   };
 
   const clearConversation = () => {

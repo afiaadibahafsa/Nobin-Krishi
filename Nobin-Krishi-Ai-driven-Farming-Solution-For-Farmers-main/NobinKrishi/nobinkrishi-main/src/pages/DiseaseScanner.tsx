@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { analyzeDisease, DiseaseAnalysisResult } from "@/services/diseaseScannerApi";
+import { analyzeDisease, DiseaseAnalysisResult, validateDiseaseImage } from "@/services/diseaseScannerApi";
 
 const diseases = [
   { id: 1, name: "Rice Blast", nameBn: "ধানের ব্লাস্ট", crop: "Rice", severity: "High", type: "Fungal" },
@@ -22,7 +22,7 @@ const diseases = [
 
 const steps = [
   { icon: Camera, title: "Capture or Upload", desc: "Take a clear photo of affected plant part" },
-  { icon: Brain, title: "AI Analysis", desc: "Dhenu-vision model processes image" },
+  { icon: Brain, title: "AI Analysis", desc: "Gemini vision model reviews visible symptoms" },
   { icon: FileCheck, title: "Get Results", desc: "Receive diagnosis and treatment plan" },
   { icon: CheckSquare, title: "Take Action", desc: "Follow recommendations and track progress" },
 ];
@@ -61,6 +61,13 @@ const DiseaseScanner = () => {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && !isProcessing) {
+      const validationError = validateDiseaseImage(file);
+      if (validationError) {
+        setErrorMessage(validationError);
+        setScanState("error");
+        e.target.value = "";
+        return;
+      }
       const reader = new FileReader();
       reader.onload = (event) => {
         const imageData = event.target?.result as string;
@@ -149,7 +156,7 @@ const DiseaseScanner = () => {
                 <div className="mt-4 p-3 bg-muted/50 rounded-lg border border-border">
                   <p className="text-xs text-muted-foreground text-center">
                     <Info className="w-3 h-3 inline mr-1" />
-                    AI-based disease detection for demo purposes. Limited to rice, wheat, and maize.
+                    Visual assessment only — not a verified laboratory diagnosis. Consult a local extension officer for confirmation.
                   </p>
                 </div>
               </div>
@@ -174,7 +181,7 @@ const DiseaseScanner = () => {
                 <p className="text-muted-foreground">
                   {scanState === "uploading" 
                     ? "Please wait while we upload your image" 
-                    : "Dhenu-vision model is processing your image. This may take a moment..."}
+                    : "The AI model is reviewing visible symptoms. This may take a moment..."}
                 </p>
                 <Progress value={scanState === "uploading" ? 50 : 85} className="mt-6 max-w-xs mx-auto" />
               </div>
@@ -238,11 +245,19 @@ const DiseaseScanner = () => {
                         </span>
                       )}
                     </div>
+                    {analysisResult?.disclaimer && (
+                      <p className="text-xs text-muted-foreground mb-4">{analysisResult.disclaimer}</p>
+                    )}
+                    {analysisResult?.whenToConsultSpecialist && (
+                      <p className="text-sm text-muted-foreground mb-4">
+                        <strong>When to consult a specialist:</strong> {analysisResult.whenToConsultSpecialist}
+                      </p>
+                    )}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {analysisResult?.confidence && (
+                      {analysisResult?.confidenceLabel && (
                         <div className="bg-muted/50 p-3 rounded-lg">
-                          <p className="text-xs text-muted-foreground">Confidence</p>
-                          <p className="font-semibold text-primary">{Math.round(analysisResult.confidence)}%</p>
+                          <p className="text-xs text-muted-foreground">Certainty</p>
+                          <p className="font-semibold text-primary capitalize">{analysisResult.confidenceLabel}</p>
                         </div>
                       )}
                       {analysisResult?.type && (
@@ -358,10 +373,13 @@ const DiseaseScanner = () => {
 
                   <TabsContent value="similar" className="mt-4">
                     <div className="grid grid-cols-2 gap-4">
-                      {["Brown Spot", "Sheath Blight"].map((disease) => (
+                      {(analysisResult?.possibleAlternatives && analysisResult.possibleAlternatives.length > 0
+                        ? analysisResult.possibleAlternatives
+                        : ["Possible look-alike conditions will appear here if the model lists them."]
+                      ).map((disease) => (
                         <div key={disease} className="p-4 border rounded-lg">
                           <h4 className="font-semibold">{disease}</h4>
-                          <p className="text-sm text-muted-foreground">Often confused with Rice Blast</p>
+                          <p className="text-sm text-muted-foreground">Possible alternative based on visible symptoms</p>
                         </div>
                       ))}
                     </div>

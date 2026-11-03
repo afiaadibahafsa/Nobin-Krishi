@@ -22,7 +22,7 @@ export interface ChatMessage {
 }
 
 export interface VoiceAIChatProps {
-  apiKey: string;
+  apiKey?: string;
   defaultLanguage?: 'bn' | 'en';
   maxHistoryLength?: number;
   advancedFeatures?: Partial<AdvancedVoiceFeaturesConfig>;
@@ -861,8 +861,8 @@ export const useVoiceAIChat = ({
 
         // Send to API with proper request formatting
         return await apiClientRef.current!.sendMessage(contextMessages, {
-          model: 'dhenu2-in-8b-preview',
-          temperature: 0.7,
+          model: 'gemini-voice-assistant',
+          temperature: 0.5,
           maxTokens: 500
         });
       }, {

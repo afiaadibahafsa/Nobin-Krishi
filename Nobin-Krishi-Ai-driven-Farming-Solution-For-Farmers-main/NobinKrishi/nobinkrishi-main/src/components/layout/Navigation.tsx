@@ -68,13 +68,18 @@ export function Navigation() {
     <header className="fixed top-0 left-0 right-0 z-50 h-20 bg-white/95 backdrop-blur-md border-b border-earth-dark/10">
       <nav className="container-max h-full flex items-center justify-between px-6 lg:px-12">
         {/* Logo */}
-        <Link to="/" className="flex items-center gap-2 group">
-          <div className="w-10 h-10 bg-accent rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform">
+        <Link to="/" className="flex items-center gap-2 group min-w-0">
+          <div className="w-10 h-10 bg-accent rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
             <Leaf className="w-6 h-6 text-white" />
           </div>
           <span className="text-2xl font-serif font-bold text-earth-dark">
             NobinKrishi
           </span>
+          <img
+            src="/built_for_aIgnite.png"
+            alt="Built for Ostad Presents YUNet AIgnite Buildathon 2026"
+            className="h-8 md:h-10 w-auto max-w-[120px] md:max-w-[160px] object-contain flex-shrink-0"
+          />
         </Link>
 
         {/* Desktop Navigation */}
@@ -169,6 +174,11 @@ export function Navigation() {
       {isMobileMenuOpen && (
         <div className="lg:hidden fixed inset-0 top-20 bg-earth-dark z-40 animate-slide-in-right">
           <div className="flex flex-col p-6 gap-2">
+            <img
+              src="/built_for_aIgnite.png"
+              alt="Built for Ostad Presents YUNet AIgnite Buildathon 2026"
+              className="h-10 w-auto max-w-[160px] object-contain mb-4"
+            />
             {navItems(t).map((item) => (
               <Link
                 key={item.name}

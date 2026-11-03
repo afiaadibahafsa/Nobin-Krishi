@@ -5,18 +5,26 @@
  */
 
 import { client } from '@gradio/client';
+import { invokeAiFunction } from '@/services/ai/invokeFunction';
 
 export interface DiseaseAnalysisResult {
   diseaseName?: string;
   diseaseNameBn?: string;
   symptoms?: string[];
-  severity?: "Low" | "Medium" | "High";
+  severity?: "Low" | "Medium" | "High" | "Uncertain";
   confidence?: number;
+  confidenceLabel?: "uncertain" | "low" | "medium" | "high";
   crop?: string;
   type?: string;
   description?: string;
   treatment?: string[];
   prevention?: string[];
+  nextSteps?: string[];
+  whenToConsultSpecialist?: string;
+  possibleAlternatives?: string[];
+  needsBetterImage?: boolean;
+  provider?: "gemini" | "huggingface";
+  disclaimer?: string;
   rawResponse?: string;
 }
 
@@ -298,14 +306,81 @@ async function callHuggingFaceSpace(
   throw new Error('Failed to get response after retries');
 }
 
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+
+export function validateDiseaseImage(file: File): string | null {
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    return 'Please upload a JPEG, PNG, or WebP crop image.';
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    return 'Please use an image smaller than 4 MB.';
+  }
+  return null;
+}
+
+interface GeminiDiseaseResponse {
+  provider?: 'gemini' | 'huggingface';
+  comparedWithSecondModel?: boolean;
+  rawResponse?: string;
+  analysis?: {
+    imageRelevant?: boolean;
+    needsBetterImage?: boolean;
+    hasVisibleIssue?: boolean;
+    likelyCondition?: string | null;
+    likelyConditionBn?: string | null;
+    crop?: string | null;
+    issueType?: string | null;
+    severity?: "Low" | "Medium" | "High" | "Uncertain";
+    confidence?: "uncertain" | "low" | "medium" | "high";
+    visibleSymptoms?: string[];
+    possibleAlternatives?: string[];
+    nextSteps?: string[];
+    prevention?: string[];
+    whenToConsultSpecialist?: string;
+    farmerSummary?: string;
+    disclaimer?: string;
+  };
+}
+
+function mapGeminiAnalysis(payload: GeminiDiseaseResponse): DiseaseAnalysisResult {
+  const analysis = payload.analysis || {};
+  return {
+    diseaseName: analysis.likelyCondition || (analysis.needsBetterImage ? 'Clearer photo needed' : 'Visual assessment'),
+    diseaseNameBn: analysis.likelyConditionBn || undefined,
+    symptoms: analysis.visibleSymptoms,
+    severity: analysis.severity,
+    confidenceLabel: analysis.confidence,
+    crop: analysis.crop || undefined,
+    type: analysis.issueType || undefined,
+    description: analysis.farmerSummary,
+    treatment: analysis.nextSteps,
+    prevention: analysis.prevention,
+    nextSteps: analysis.nextSteps,
+    whenToConsultSpecialist: analysis.whenToConsultSpecialist,
+    possibleAlternatives: analysis.possibleAlternatives,
+    needsBetterImage: analysis.needsBetterImage,
+    provider: payload.provider,
+    disclaimer: analysis.disclaimer || 'This is general image-based agricultural information, not a verified laboratory diagnosis.',
+    rawResponse: payload.rawResponse || analysis.farmerSummary,
+  };
+}
+
+async function analyzeDiseaseWithGemini(imageBase64: string): Promise<DiseaseAnalysisResult> {
+  const payload = await invokeAiFunction<GeminiDiseaseResponse>('gemini-disease-analysis', {
+    imageBase64,
+    language: /[\u0980-\u09FF]/.test(navigator.language) ? 'bn' : 'en',
+  }, { timeoutMs: 60000 });
+
+  return mapGeminiAnalysis(payload);
+}
+
 /**
- * Analyze crop disease from image
- * 
- * @param imageBase64 - Base64 encoded image data URL
- * @param spaceUrl - Hugging Face Space URL (defaults to KissanAI/Dhenu-vision-lora-0.1)
- * @returns Parsed disease analysis result
+ * Optional Hugging Face / Dhenu Vision path.
+ * Used only when VITE_DISEASE_IMAGE_PROVIDER=huggingface.
+ * This does not run automatically alongside Gemini.
  */
-export async function analyzeDisease(
+export async function analyzeDiseaseWithHuggingFace(
   imageBase64: string,
   spaceUrl?: string
 ): Promise<DiseaseAnalysisResult> {
@@ -345,9 +420,24 @@ export async function analyzeDisease(
 
     return parsedResult;
   } catch (error: any) {
-    // Re-throw with user-friendly message
     const errorMessage = error.message || 'Failed to analyze image';
     throw new Error(errorMessage);
   }
+}
+
+/**
+ * Analyze crop disease from image.
+ * Gemini is the primary provider. Hugging Face / Dhenu Vision is optional
+ * and only used when VITE_DISEASE_IMAGE_PROVIDER=huggingface.
+ */
+export async function analyzeDisease(
+  imageBase64: string,
+  spaceUrl?: string
+): Promise<DiseaseAnalysisResult> {
+  const provider = String(import.meta.env.VITE_DISEASE_IMAGE_PROVIDER || 'gemini').toLowerCase();
+  if (provider === 'huggingface') {
+    return analyzeDiseaseWithHuggingFace(imageBase64, spaceUrl);
+  }
+  return analyzeDiseaseWithGemini(imageBase64);
 }
 

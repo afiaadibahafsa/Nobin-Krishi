@@ -1,6 +1,10 @@
+import { useEffect, useRef, useState } from 'react';
 import { Users, Map, Target, TrendingUp, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/context/LanguageContext';
+
+const HERO_VIDEO_SRC = '/videos/hero-agriculture.mp4';
+const HERO_POSTER_SRC = '/videos/hero-agriculture-poster.jpg';
 
 const stats = (t: (bn: string, en: string) => string) => [
   { icon: Users, value: '45,000+', label: t('কৃষক', 'Farmers') },
@@ -11,25 +15,72 @@ const stats = (t: (bn: string, en: string) => string) => [
 
 export function HeroSection() {
   const { t } = useLanguage();
-  return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
-      {/* Background Image */}
-      <div className="absolute inset-0 overflow-hidden">
-  <video
-    className="w-full h-full object-cover"
-    autoPlay
-    loop
-    muted
-    playsInline
-  >
-    <source src="https://www.cropin.com//wp-content//uploads//2025//09//home-banner-video-updated-compressed.mp4" type="video/mp4" />
-  </video>
-</div>
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [videoUnavailable, setVideoUnavailable] = useState(false);
 
-      
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const syncPreference = () => setPrefersReducedMotion(mediaQuery.matches);
+    syncPreference();
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', syncPreference);
+      return () => mediaQuery.removeEventListener('change', syncPreference);
+    }
+
+    mediaQuery.addListener(syncPreference);
+    return () => mediaQuery.removeListener(syncPreference);
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || prefersReducedMotion || videoUnavailable) {
+      return;
+    }
+
+    const playPromise = video.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch(() => {
+        setVideoUnavailable(true);
+      });
+    }
+  }, [prefersReducedMotion, videoUnavailable]);
+
+  const showVideo = !prefersReducedMotion && !videoUnavailable;
+
+  return (
+    <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-earth-dark">
+      {/* Background Video */}
+      <div className="absolute inset-0 overflow-hidden z-0">
+        {showVideo ? (
+          <video
+            ref={videoRef}
+            className="w-full h-full object-cover"
+            autoPlay
+            loop
+            muted
+            playsInline
+            preload="metadata"
+            poster={HERO_POSTER_SRC}
+            onError={() => setVideoUnavailable(true)}
+            aria-hidden="true"
+          >
+            <source src={HERO_VIDEO_SRC} type="video/mp4" />
+          </video>
+        ) : (
+          <img
+            src={HERO_POSTER_SRC}
+            alt=""
+            className="w-full h-full object-cover"
+            aria-hidden="true"
+          />
+        )}
+      </div>
+
       {/* Gradient Overlay */}
-      <div className="absolute inset-0 bg-hero-gradient" />
-      
+      <div className="absolute inset-0 z-[1] bg-hero-gradient pointer-events-none" />
+
       {/* Content */}
       <div className="relative z-10 container-max px-6 lg:px-12 pt-32 pb-8">
         <div className="max-w-4xl mx-auto text-center">
@@ -37,7 +88,7 @@ export function HeroSection() {
           <h1 className="heading-hero text-white animate-fade-up">
             {t('বুদ্ধিমান কৃষির মাধ্যমে কৃষকদের শক্তিশালী করি', 'Empowering Farmers Through Intelligent Agriculture')}
           </h1>
-          
+
           {/* Subheadline */}
           <p className="mt-6 text-xl md:text-2xl text-white/95 leading-relaxed max-w-3xl mx-auto animate-fade-up-delay-1">
             {t(
@@ -45,17 +96,17 @@ export function HeroSection() {
               'AI-powered insights for crop monitoring, yield prediction, and disease prevention — transforming agriculture with data-driven decisions'
             )}
           </p>
-          
+
           {/* CTA Buttons */}
           <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-up-delay-2">
-            <Button 
-              size="lg" 
+            <Button
+              size="lg"
               className="btn-cta h-14 text-lg px-8 w-full sm:w-auto"
             >
               {t('ফ্রি ট্রায়াল শুরু করুন', 'Start Your Free Trial')}
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="lg"
               className="h-14 text-lg px-8 border-2 border-white text-white hover:bg-white hover:text-earth-dark w-full sm:w-auto bg-transparent"
             >
@@ -64,13 +115,13 @@ export function HeroSection() {
             </Button>
           </div>
         </div>
-        
+
         {/* Stats Banner */}
         <div className="mt-16 md:mt-24 stats-banner rounded-2xl p-6 md:p-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
             {stats(t).map((stat, index) => (
-              <div 
-                key={stat.label} 
+              <div
+                key={stat.label}
                 className="text-center"
                 style={{ animationDelay: `${index * 100 + 600}ms` }}
               >
@@ -86,9 +137,9 @@ export function HeroSection() {
           </div>
         </div>
       </div>
-      
+
       {/* Scroll Indicator */}
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-pulse-slow">
+      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-pulse-slow z-10">
         <div className="w-6 h-10 rounded-full border-2 border-white/50 flex items-start justify-center p-2">
           <div className="w-1 h-2 bg-white/80 rounded-full animate-bounce" />
         </div>

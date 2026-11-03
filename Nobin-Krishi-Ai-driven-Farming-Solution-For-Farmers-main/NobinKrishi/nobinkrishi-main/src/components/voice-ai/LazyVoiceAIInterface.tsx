@@ -62,9 +62,7 @@ const LazyVoiceAIInterface: React.FC<LazyVoiceAIInterfaceProps> = ({
     browserInfo
   } = useBrowserCompatibility();
 
-  // Initialize Voice AI Chat with dummy API key for now
   const voiceAI = useVoiceAIChat({
-    apiKey: "dummy-api-key", // This should come from environment variables
     defaultLanguage: "bn",
     maxHistoryLength: 5
   });
