@@ -1074,40 +1074,13 @@ NobinKrishi is committed to transparency:
 
 ---
 
-## 📧 Contact Us
-
-**Headquarters:**
-NobinKrishi Technologies Ltd.
-[Address]
-Dhaka, Bangladesh
-
-**General Inquiries:** info@nobinkrishi.com
-**Press & Media:** press@nobinkrishi.com
-**Partnerships:** partners@nobinkrishi.com
-**Careers:** careers@nobinkrishi.com
-
-**Follow Us:**
-- 📘 Facebook: /nobinkrishi
-- 📸 Instagram: @nobinkrishi
-- 🐦 Twitter: @nobinkrishi
-- 📺 YouTube: NobinKrishi 
-- 💼 LinkedIn: NobinKrishi
-
----
-
 ## 🙏 Thank You
-
-To every farmer who trusts us with their livelihood.
-To every consumer who supports local agriculture.
-To every partner who believes in our mission.
-To every team member working tirelessly.
 
 **Together, we're cultivating a better future.** 🌾💚
 
 ---
 
 **Version:** 1.0.0
-**Last Updated:** 27/12/2025
 **Language:** English (বাংলা version available)
 
 ---
@@ -1115,7 +1088,6 @@ To every team member working tirelessly.
 **🚀 How to Clone & Run the Project Locally**
 
 1. Clone the repository
-git clone https://github.com/Nobin-Krishi/Nobin-Krishi.git
 
 2. Go into the project folder
 cd nobinkrishi-main
